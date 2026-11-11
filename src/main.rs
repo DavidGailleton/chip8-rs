@@ -1,6 +1,6 @@
 use std::{error::Error, process::ExitCode};
 
-use chip8_rs::Chip8;
+use chip8_rs::{Chip8, MfbWindow};
 
 /// Reads the ROM path from the command line, loads it, and runs the emulator.
 fn run() -> Result<(), Box<dyn Error>> {
@@ -10,9 +10,17 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let rom = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
 
+    let mut window = MfbWindow::new()?;
+
     let mut chip8 = Chip8::new();
 
     chip8.load_rom(&rom)?;
+
+    while window.window.is_open() {
+        chip8.step()?;
+        window.update_buffer(&chip8.display);
+        window.draw()?;
+    }
 
     Ok(())
 }

@@ -116,13 +116,10 @@ pub struct Chip8 {
     /// Address of the next instruction to fetch (PC).
     program_counter: usize,
     /// Index register `I`, used to point at memory (sprites, BCD, register dumps).
-    i: u16,
-    /// Delay timer: decremented at 60 Hz while non-zero.
-    delay_timer: u8,
-    /// Sound timer: decremented at 60 Hz; the buzzer sounds while it is non-zero.
-    sound_timer: u8,
+    i: usize,
     /// General-purpose registers `V0`–`VF`. `VF` doubles as the flag register.
     register: [u8; REGISTER_SIZE],
+    pub display: [u64; 32],
 }
 
 impl Chip8 {
@@ -142,9 +139,8 @@ impl Chip8 {
             memory: [0; MEMORY_SIZE],
             program_counter: PROGRAM_START,
             i: 0x0,
-            delay_timer: 0x0,
-            sound_timer: 0x0,
             register: [0; REGISTER_SIZE],
+            display: [0; 32],
         }
     }
 
@@ -193,7 +189,7 @@ impl Chip8 {
     fn set_register(&mut self, index: usize, value: u8) -> Result<(), ExecutionError> {
         if REGISTER_SIZE <= index {
             return Err(ExecutionError::IndexToHigh {
-                index: index,
+                index,
                 max: REGISTER_SIZE,
             });
         }
@@ -203,12 +199,36 @@ impl Chip8 {
     fn add_register(&mut self, index: usize, value: u8) -> Result<(), ExecutionError> {
         if REGISTER_SIZE <= index {
             return Err(ExecutionError::IndexToHigh {
-                index: index,
+                index,
                 max: REGISTER_SIZE,
             });
         }
         self.register[index] += value;
         Ok(())
+    }
+
+    fn draw(&mut self, x: u8, y: u8, n: u8) {
+        let col = self.register[usize::from(x)] % 64;
+        let row = usize::from(self.register[usize::from(y)]) % 32;
+
+        let mut collision: bool = false;
+
+        let sprite = &self.memory[self.i..self.i + usize::from(n)];
+
+        for i in 0..usize::from(n) {
+            if row + i >= 32 {
+                break;
+            }
+
+            let mask = (u64::from(sprite[i]) << 56) >> col;
+
+            if self.display[row + i] & mask != 0 {
+                collision = true;
+            }
+
+            self.display[row + i] ^= mask;
+        }
+        self.register[0xF] = u8::from(collision);
     }
 
     /// Reads the instruction at the program counter and advances the PC by 2.
@@ -241,7 +261,7 @@ impl Chip8 {
     ///
     /// Returns [`ExecutionError::UnknownOpcode`] if the opcode is not a
     /// supported instruction.
-    #[must_use]
+    #[must_use = "decoded opcode should always been executed"]
     fn decode(&self, opcode: u16) -> Result<Instruction, ExecutionError> {
         let [hi, lo] = opcode.to_be_bytes();
         let (kind, x, y, n) = (hi >> 4, hi & 0x0F, lo >> 4, lo & 0x0F);
@@ -262,11 +282,13 @@ impl Chip8 {
             Instruction::Jump(nnn) => Ok(self.pc_jump_to(nnn.into())),
             Instruction::SetRegister { x, nn } => self.set_register(x.into(), nn),
             Instruction::AddToRegister { x, nn } => self.add_register(x.into(), nn),
-            Instruction::SetIndex(nnn) => Ok(self.i = nnn),
+            Instruction::SetIndex(nnn) => Ok(self.i = usize::from(nnn)),
+            Instruction::ClearScreen => Ok(self.display = [0; 32]),
+            Instruction::Draw { x, y, n } => Ok(self.draw(x, y, n)),
         }
     }
 
-    fn step(&mut self) -> Result<(), ExecutionError> {
+    pub fn step(&mut self) -> Result<(), ExecutionError> {
         let opcode = self.fetch();
         let instruction = self.decode(opcode)?;
         self.execute(instruction)?;
@@ -297,8 +319,6 @@ mod tests {
 
         assert_eq!(chip8.program_counter, PROGRAM_START);
         assert_eq!(chip8.i, 0);
-        assert_eq!(chip8.delay_timer, 0);
-        assert_eq!(chip8.sound_timer, 0);
         assert_eq!(chip8.register, [0; REGISTER_SIZE]);
         assert!(chip8.memory.iter().all(|&byte| byte == 0));
     }
