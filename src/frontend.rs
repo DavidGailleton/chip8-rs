@@ -31,9 +31,9 @@ impl MfbWindow {
     }
 
     pub fn update_buffer(&mut self, new_buffer: &[u64; 32]) {
-        for (row, bits) in self.buffer.chunks_exact_mut(HEIGHT).zip(new_buffer) {
+        for (row, bits) in self.buffer.chunks_exact_mut(WIDTH).zip(new_buffer) {
             for (pixel, color) in row.iter_mut().zip(0..WIDTH) {
-                let bit = (bits >> 1) & 1;
+                let bit = (bits >> (63 - color)) & 1;
 
                 if bit == 1 {
                     *pixel = ON_COLOR;
