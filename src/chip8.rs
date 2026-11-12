@@ -123,6 +123,11 @@ enum Instruction {
         /// Sprite height in rows (`0..=15`).
         n: u8,
     },
+    Logical {
+        x: u8,
+        y: u8,
+        n: u8,
+    },
 }
 
 /// A CHIP-8 virtual machine.
@@ -260,6 +265,49 @@ impl Chip8 {
         self.register[0xF] = u8::from(collision);
     }
 
+    fn logic_instruction(&mut self, x: u8, y: u8, n: u8) -> Result<(), ExecutionError> {
+        match n {
+            0x0 => Ok(self.set_register(x.into(), self.get_register(y.into())?)?),
+            0x1 => Ok(self.set_register(
+                usize::from(x),
+                self.get_register(x.into())? | self.get_register(y.into())?,
+            )?),
+            0x2 => Ok(self.set_register(
+                usize::from(x),
+                self.get_register(x.into())? & self.get_register(y.into())?,
+            )?),
+            0x3 => Ok(self.set_register(
+                usize::from(x),
+                self.get_register(x.into())? ^ self.get_register(y.into())?,
+            )?),
+            0x4 => Ok(self.set_register(
+                usize::from(x),
+                self.get_register(x.into())? + self.get_register(y.into())?,
+            )?),
+            0x5 => Ok(self.set_register(
+                usize::from(x),
+                self.get_register(x.into())? - self.get_register(y.into())?,
+            )?),
+            0x6 => {
+                self.set_register(usize::from(x), self.get_register(y.into())?)?;
+                let bit_shifted_out = self.get_register(usize::from(x))? & 0b1000_0000;
+                self.set_register(usize::from(x), self.get_register(x.into())? << 1)?;
+                Ok(self.set_register(self.i, bit_shifted_out >> 7)?)
+            }
+            0x7 => Ok(self.set_register(
+                usize::from(x),
+                self.get_register(y.into())? - self.get_register(x.into())?,
+            )?),
+            0xE => {
+                self.set_register(usize::from(x), self.get_register(y.into())?)?;
+                let bit_shifted_out = self.get_register(usize::from(x))? & 0b0000_0001;
+                self.set_register(usize::from(x), self.get_register(x.into())? << 1)?;
+                Ok(self.set_register(self.i, bit_shifted_out)?)
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// Reads the instruction at the program counter and advances the PC by 2.
     ///
     /// CHIP-8 instructions are two bytes, stored big-endian: the bytes
@@ -322,6 +370,7 @@ impl Chip8 {
             }),
             (0xA, _, _, _) => Ok(Instruction::SetIndex(opcode & 0x0FFF)),
             (0xD, _, _, _) => Ok(Instruction::Draw { x, y, n }),
+            (0x8, _, _, _) => Ok(Instruction::Logical { x, y, n }),
             _ => Err(ExecutionError::UnknownOpcode { opcode }),
         }
     }
@@ -342,7 +391,8 @@ impl Chip8 {
                 Ok(())
             }
             Instruction::CallSubroutine { nnn } => {
-                self.stack.push(nnn);
+                self.stack
+                    .push(u16::try_from(self.program_counter).unwrap_or(255));
                 self.pc_jump_to(nnn.into());
                 Ok(())
             }
@@ -362,6 +412,10 @@ impl Chip8 {
             }
             Instruction::Draw { x, y, n } => {
                 self.draw(x, y, n);
+                Ok(())
+            }
+            Instruction::Logical { x, y, n } => {
+                self.logic_instruction(x, y, n)?;
                 Ok(())
             }
         }
