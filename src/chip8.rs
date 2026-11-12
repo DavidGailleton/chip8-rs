@@ -31,6 +31,7 @@ pub enum ExecutionError {
         index: usize,
         max: usize,
     },
+    EmptyStack,
 }
 
 impl fmt::Display for ExecutionError {
@@ -41,6 +42,9 @@ impl fmt::Display for ExecutionError {
             }
             Self::IndexToHigh { index, max } => {
                 write!(f, "index to high: {index}, max is {max}")
+            }
+            Self::EmptyStack => {
+                write!(f, "try to pop on an empty stack")
             }
         }
     }
@@ -107,6 +111,10 @@ enum Instruction {
         /// Sprite height in rows (`0..=15`).
         n: u8,
     },
+    CallSubroutine {
+        nnn: u16,
+    },
+    ReturnSubroutine,
 }
 
 /// A CHIP-8 virtual machine.
@@ -122,6 +130,7 @@ pub struct Chip8 {
     /// General-purpose registers `V0`–`VF`. `VF` doubles as the flag register.
     register: [u8; REGISTER_SIZE],
     pub display: [u64; HEIGHT],
+    stack: Vec<u16>,
 }
 
 impl Chip8 {
@@ -143,6 +152,7 @@ impl Chip8 {
             i: 0x0,
             register: [0; REGISTER_SIZE],
             display: [0; HEIGHT],
+            stack: Vec::new(),
         }
     }
 
@@ -275,6 +285,10 @@ impl Chip8 {
             (0x7, _, _, _) => Ok(Instruction::AddToRegister { x, nn: lo }),
             (0xA, _, _, _) => Ok(Instruction::SetIndex(opcode & 0x0FFF)),
             (0xD, _, _, _) => Ok(Instruction::Draw { x, y, n }),
+            (0x2, _, _, _) => Ok(Instruction::CallSubroutine {
+                nnn: opcode & 0x0FFF,
+            }),
+            (0x0, 0x0, 0xE, 0xE) => Ok(Instruction::ReturnSubroutine),
             _ => Err(ExecutionError::UnknownOpcode { opcode }),
         }
     }
@@ -297,6 +311,16 @@ impl Chip8 {
             }
             Instruction::Draw { x, y, n } => {
                 self.draw(x, y, n);
+                Ok(())
+            }
+            Instruction::CallSubroutine { nnn } => {
+                self.stack.push(nnn);
+                self.pc_jump_to(nnn.into());
+                Ok(())
+            }
+            Instruction::ReturnSubroutine => {
+                self.program_counter =
+                    usize::from(self.stack.pop().ok_or(ExecutionError::EmptyStack)?);
                 Ok(())
             }
         }
