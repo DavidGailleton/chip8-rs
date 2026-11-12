@@ -83,8 +83,20 @@ impl Error for LoadError {}
 enum Instruction {
     /// `00E0`: clear the display.
     ClearScreen,
+    ReturnSubroutine,
     /// `1NNN`: jump to address `NNN`.
     Jump(u16),
+    CallSubroutine {
+        nnn: u16,
+    },
+    SkipConditionAND {
+        a: u8,
+        b: u8,
+    },
+    SkipConditionXOR {
+        a: u8,
+        b: u8,
+    },
     /// `6XNN`: set register `VX` to `NN`.
     SetRegister {
         /// Register number (`0x0..=0xF`).
@@ -110,18 +122,6 @@ enum Instruction {
         y: u8,
         /// Sprite height in rows (`0..=15`).
         n: u8,
-    },
-    CallSubroutine {
-        nnn: u16,
-    },
-    ReturnSubroutine,
-    SkipConditionAND {
-        a: u8,
-        b: u8,
-    },
-    SkipConditionXOR {
-        a: u8,
-        b: u8,
     },
 }
 
@@ -297,15 +297,11 @@ impl Chip8 {
 
         match (kind, x, y, n) {
             (0x0, 0x0, 0xE, 0x0) => Ok(Instruction::ClearScreen),
+            (0x0, 0x0, 0xE, 0xE) => Ok(Instruction::ReturnSubroutine),
             (0x1, _, _, _) => Ok(Instruction::Jump(opcode & 0x0FFF)),
-            (0x6, _, _, _) => Ok(Instruction::SetRegister { x, nn: lo }),
-            (0x7, _, _, _) => Ok(Instruction::AddToRegister { x, nn: lo }),
-            (0xA, _, _, _) => Ok(Instruction::SetIndex(opcode & 0x0FFF)),
-            (0xD, _, _, _) => Ok(Instruction::Draw { x, y, n }),
             (0x2, _, _, _) => Ok(Instruction::CallSubroutine {
                 nnn: opcode & 0x0FFF,
             }),
-            (0x0, 0x0, 0xE, 0xE) => Ok(Instruction::ReturnSubroutine),
             (0x3, _, _, _) => Ok(Instruction::SkipConditionAND {
                 a: self.get_register(usize::from(x))?,
                 b: lo,
@@ -318,18 +314,44 @@ impl Chip8 {
                 a: self.get_register(usize::from(x))?,
                 b: self.get_register(usize::from(y))?,
             }),
+            (0x6, _, _, _) => Ok(Instruction::SetRegister { x, nn: lo }),
+            (0x7, _, _, _) => Ok(Instruction::AddToRegister { x, nn: lo }),
             (0x9, _, _, 0x0) => Ok(Instruction::SkipConditionXOR {
                 a: self.get_register(usize::from(x))?,
                 b: self.get_register(usize::from(y))?,
             }),
+            (0xA, _, _, _) => Ok(Instruction::SetIndex(opcode & 0x0FFF)),
+            (0xD, _, _, _) => Ok(Instruction::Draw { x, y, n }),
             _ => Err(ExecutionError::UnknownOpcode { opcode }),
         }
     }
 
     fn execute(&mut self, instruction: Instruction) -> Result<(), ExecutionError> {
         match instruction {
+            Instruction::ClearScreen => {
+                self.display = [0; HEIGHT];
+                Ok(())
+            }
+            Instruction::ReturnSubroutine => {
+                self.program_counter =
+                    usize::from(self.stack.pop().ok_or(ExecutionError::EmptyStack)?);
+                Ok(())
+            }
             Instruction::Jump(nnn) => {
                 self.pc_jump_to(nnn.into());
+                Ok(())
+            }
+            Instruction::CallSubroutine { nnn } => {
+                self.stack.push(nnn);
+                self.pc_jump_to(nnn.into());
+                Ok(())
+            }
+            Instruction::SkipConditionAND { a, b } => {
+                self.program_counter += if a == b { 2 } else { 0 };
+                Ok(())
+            }
+            Instruction::SkipConditionXOR { a, b } => {
+                self.program_counter += if a != b { 2 } else { 0 };
                 Ok(())
             }
             Instruction::SetRegister { x, nn } => self.set_register(x.into(), nn),
@@ -338,30 +360,8 @@ impl Chip8 {
                 self.i = usize::from(nnn);
                 Ok(())
             }
-            Instruction::ClearScreen => {
-                self.display = [0; HEIGHT];
-                Ok(())
-            }
             Instruction::Draw { x, y, n } => {
                 self.draw(x, y, n);
-                Ok(())
-            }
-            Instruction::CallSubroutine { nnn } => {
-                self.stack.push(nnn);
-                self.pc_jump_to(nnn.into());
-                Ok(())
-            }
-            Instruction::ReturnSubroutine => {
-                self.program_counter =
-                    usize::from(self.stack.pop().ok_or(ExecutionError::EmptyStack)?);
-                Ok(())
-            }
-            Instruction::SkipConditionAND { a, b } => {
-                self.program_counter += if a != b { 2 } else { 0 };
-                Ok(())
-            }
-            Instruction::SkipConditionXOR { a, b } => {
-                self.program_counter += if a == b { 2 } else { 0 };
                 Ok(())
             }
         }
