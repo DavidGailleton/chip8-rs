@@ -5,6 +5,8 @@
 
 use std::{error::Error, fmt};
 
+use crate::{HEIGHT, WIDTH};
+
 /// Total addressable RAM: 4 KiB, addresses `0x000..=0xFFF`.
 const MEMORY_SIZE: usize = 4096;
 /// Address where ROMs are loaded and where execution starts.
@@ -119,7 +121,7 @@ pub struct Chip8 {
     i: usize,
     /// General-purpose registers `V0`–`VF`. `VF` doubles as the flag register.
     register: [u8; REGISTER_SIZE],
-    pub display: [u64; 32],
+    pub display: [u64; HEIGHT],
 }
 
 impl Chip8 {
@@ -140,7 +142,7 @@ impl Chip8 {
             program_counter: PROGRAM_START,
             i: 0x0,
             register: [0; REGISTER_SIZE],
-            display: [0; 32],
+            display: [0; HEIGHT],
         }
     }
 
@@ -208,19 +210,19 @@ impl Chip8 {
     }
 
     fn draw(&mut self, x: u8, y: u8, n: u8) {
-        let col = self.register[usize::from(x)] % 64;
-        let row = usize::from(self.register[usize::from(y)]) % 32;
+        let col = usize::from(self.register[usize::from(x)]) % WIDTH;
+        let row = usize::from(self.register[usize::from(y)]) % HEIGHT;
 
         let mut collision: bool = false;
 
         let sprite = &self.memory[self.i..self.i + usize::from(n)];
 
-        for i in 0..usize::from(n) {
-            if row + i >= 32 {
+        for (i, item) in sprite.iter().enumerate().take(usize::from(n)) {
+            if row + i >= HEIGHT {
                 break;
             }
 
-            let mask = (u64::from(sprite[i]) << 56) >> col;
+            let mask = (u64::from(*item) << (WIDTH - size_of::<u8>())) >> col;
 
             if self.display[row + i] & mask != 0 {
                 collision = true;
@@ -279,12 +281,24 @@ impl Chip8 {
 
     fn execute(&mut self, instruction: Instruction) -> Result<(), ExecutionError> {
         match instruction {
-            Instruction::Jump(nnn) => Ok(self.pc_jump_to(nnn.into())),
+            Instruction::Jump(nnn) => {
+                self.pc_jump_to(nnn.into());
+                Ok(())
+            }
             Instruction::SetRegister { x, nn } => self.set_register(x.into(), nn),
             Instruction::AddToRegister { x, nn } => self.add_register(x.into(), nn),
-            Instruction::SetIndex(nnn) => Ok(self.i = usize::from(nnn)),
-            Instruction::ClearScreen => Ok(self.display = [0; 32]),
-            Instruction::Draw { x, y, n } => Ok(self.draw(x, y, n)),
+            Instruction::SetIndex(nnn) => {
+                self.i = usize::from(nnn);
+                Ok(())
+            }
+            Instruction::ClearScreen => {
+                self.display = [0; HEIGHT];
+                Ok(())
+            }
+            Instruction::Draw { x, y, n } => {
+                self.draw(x, y, n);
+                Ok(())
+            }
         }
     }
 

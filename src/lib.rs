@@ -7,4 +7,4 @@ mod chip8;
 mod frontend;
 
 pub use chip8::{Chip8, LoadError};
-pub use frontend::MfbWindow;
+pub use frontend::{HEIGHT, MfbWindow, WIDTH};

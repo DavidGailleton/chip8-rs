@@ -1,21 +1,24 @@
 use minifb::{Window, WindowOptions};
 
-const WIDTH: usize = 64;
-const HEIGHT: usize = 32;
+pub const WIDTH: usize = 64;
+pub const HEIGHT: usize = 32;
+
+const _: () = assert!(WIDTH == u64::BITS as usize);
+
 const FPS: usize = 60;
 
 const ON_COLOR: u32 = 0x00FFFFFF;
 const OFF_COLOR: u32 = 0x00000000;
 
 pub struct MfbWindow {
-    buffer: Vec<u32>,
+    buffer: [[u32; WIDTH]; HEIGHT],
     pub window: Window,
 }
 
 impl MfbWindow {
     pub fn new() -> Result<Self, minifb::Error> {
         let mut win = Self {
-            buffer: vec![0; WIDTH * HEIGHT],
+            buffer: [[OFF_COLOR; WIDTH]; HEIGHT],
             window: Window::new(
                 "chip8-rs",
                 WIDTH,
@@ -30,21 +33,18 @@ impl MfbWindow {
         Ok(win)
     }
 
-    pub fn update_buffer(&mut self, new_buffer: &[u64; 32]) {
-        for (row, bits) in self.buffer.chunks_exact_mut(WIDTH).zip(new_buffer) {
-            for (pixel, color) in row.iter_mut().zip(0..WIDTH) {
-                let bit = (bits >> (63 - color)) & 1;
+    pub fn update_buffer(&mut self, new_buffer: &[u64; HEIGHT]) {
+        for (row, bits) in self.buffer.iter_mut().zip(new_buffer) {
+            for (x, pixel) in row.iter_mut().enumerate() {
+                let bit = (bits >> (WIDTH - 1 - x)) & 1;
 
-                if bit == 1 {
-                    *pixel = ON_COLOR;
-                } else {
-                    *pixel = OFF_COLOR;
-                }
+                *pixel = if bit == 1 { ON_COLOR } else { OFF_COLOR };
             }
         }
     }
 
     pub fn draw(&mut self) -> Result<(), minifb::Error> {
-        self.window.update_with_buffer(&self.buffer, WIDTH, HEIGHT)
+        self.window
+            .update_with_buffer(self.buffer.as_flattened(), WIDTH, HEIGHT)
     }
 }
