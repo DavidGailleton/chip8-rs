@@ -115,6 +115,14 @@ enum Instruction {
         nnn: u16,
     },
     ReturnSubroutine,
+    SkipConditionAND {
+        a: u8,
+        b: u8,
+    },
+    SkipConditionXOR {
+        a: u8,
+        b: u8,
+    },
 }
 
 /// A CHIP-8 virtual machine.
@@ -219,6 +227,15 @@ impl Chip8 {
         Ok(())
     }
 
+    fn get_register(&self, index: usize) -> Result<u8, ExecutionError> {
+        if REGISTER_SIZE <= index {
+            return Err(ExecutionError::IndexToHigh {
+                index,
+                max: REGISTER_SIZE,
+            });
+        }
+        Ok(self.register[index])
+    }
     fn draw(&mut self, x: u8, y: u8, n: u8) {
         let col = usize::from(self.register[usize::from(x)]) % WIDTH;
         let row = usize::from(self.register[usize::from(y)]) % HEIGHT;
@@ -289,6 +306,22 @@ impl Chip8 {
                 nnn: opcode & 0x0FFF,
             }),
             (0x0, 0x0, 0xE, 0xE) => Ok(Instruction::ReturnSubroutine),
+            (0x3, _, _, _) => Ok(Instruction::SkipConditionAND {
+                a: self.get_register(usize::from(x))?,
+                b: lo,
+            }),
+            (0x4, _, _, _) => Ok(Instruction::SkipConditionXOR {
+                a: self.get_register(usize::from(x))?,
+                b: lo,
+            }),
+            (0x5, _, _, 0x0) => Ok(Instruction::SkipConditionAND {
+                a: self.get_register(usize::from(x))?,
+                b: self.get_register(usize::from(y))?,
+            }),
+            (0x9, _, _, 0x0) => Ok(Instruction::SkipConditionXOR {
+                a: self.get_register(usize::from(x))?,
+                b: self.get_register(usize::from(y))?,
+            }),
             _ => Err(ExecutionError::UnknownOpcode { opcode }),
         }
     }
@@ -321,6 +354,14 @@ impl Chip8 {
             Instruction::ReturnSubroutine => {
                 self.program_counter =
                     usize::from(self.stack.pop().ok_or(ExecutionError::EmptyStack)?);
+                Ok(())
+            }
+            Instruction::SkipConditionAND { a, b } => {
+                self.program_counter += if a != b { 2 } else { 0 };
+                Ok(())
+            }
+            Instruction::SkipConditionXOR { a, b } => {
+                self.program_counter += if a == b { 2 } else { 0 };
                 Ok(())
             }
         }
