@@ -1,21 +1,36 @@
+//! The window front-end: shows the CHIP-8 display with `minifb`.
+
 use minifb::{Window, WindowOptions};
 
+/// Display width in pixels. One display row fits exactly in a `u64`.
 pub const WIDTH: usize = 64;
+/// Display height in pixels.
 pub const HEIGHT: usize = 32;
 
 const _: () = assert!(WIDTH == u64::BITS as usize);
 
+/// Window refresh rate, in frames per second.
 const FPS: usize = 60;
 
+/// Color of a lit pixel (`0x00RRGGBB`).
 const ON_COLOR: u32 = 0x00FFFFFF;
+/// Color of an unlit pixel (`0x00RRGGBB`).
 const OFF_COLOR: u32 = 0x00000000;
 
+/// A `minifb` window scaled ×16, with the pixel buffer it displays.
 pub struct MfbWindow {
+    /// One `0x00RRGGBB` color per pixel, row by row.
     buffer: [[u32; WIDTH]; HEIGHT],
+    /// The underlying window; use it to check [`Window::is_open`].
     pub window: Window,
 }
 
 impl MfbWindow {
+    /// Opens a 64×32 window scaled ×16, limited to 60 frames per second.
+    ///
+    /// # Errors
+    ///
+    /// Returns the `minifb` error if the window cannot be created.
     pub fn new() -> Result<Self, minifb::Error> {
         let mut win = Self {
             buffer: [[OFF_COLOR; WIDTH]; HEIGHT],
@@ -33,6 +48,8 @@ impl MfbWindow {
         Ok(win)
     }
 
+    /// Converts the CHIP-8 display (one `u64` per row, most significant bit
+    /// on the left) into pixel colors. Call [`MfbWindow::draw`] to show them.
     pub fn update_buffer(&mut self, new_buffer: &[u64; HEIGHT]) {
         for (row, bits) in self.buffer.iter_mut().zip(new_buffer) {
             for (x, pixel) in row.iter_mut().enumerate() {
@@ -43,6 +60,11 @@ impl MfbWindow {
         }
     }
 
+    /// Shows the pixel buffer in the window and processes window events.
+    ///
+    /// # Errors
+    ///
+    /// Returns the `minifb` error if the window cannot be updated.
     pub fn draw(&mut self) -> Result<(), minifb::Error> {
         self.window
             .update_with_buffer(self.buffer.as_flattened(), WIDTH, HEIGHT)
