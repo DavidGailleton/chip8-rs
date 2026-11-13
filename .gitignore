@@ -33,3 +33,7 @@ rustc-ice-*.txt
 .agents
 .claude
 .direnv/
+
+# Agent files (kept local)
+CLAUDE.md
+skills-lock.json
