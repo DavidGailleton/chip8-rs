@@ -282,6 +282,9 @@ pub struct Chip8 {
     delay_timer: u8,
     /// Sound timer, set by `FX18`. The buzzer sounds while it is non-zero.
     sound_timer: u8,
+    /// Set by `00E0` and `DXYN` when the display changes. The front-end
+    /// redraws only when it is set, then clears it.
+    pub display_changed: bool,
 }
 
 impl Chip8 {
@@ -310,6 +313,7 @@ impl Chip8 {
             key_pressed: None,
             delay_timer: 0,
             sound_timer: 0,
+            display_changed: true,
         }
     }
 
@@ -433,6 +437,7 @@ impl Chip8 {
             self.display[row + i] ^= mask;
         }
         self.register[0xF] = u8::from(collision);
+        self.display_changed = true;
     }
 
     /// Stores `a + b` (wrapping) in `V{index}` and returns the carry: 1 if the
@@ -640,6 +645,7 @@ impl Chip8 {
         match instruction {
             Instruction::ClearScreen => {
                 self.display = [0; HEIGHT];
+                self.display_changed = true;
                 Ok(())
             }
             Instruction::ReturnSubroutine => {
@@ -795,6 +801,16 @@ impl Chip8 {
         let instruction = self.decode(opcode)?;
         self.execute(instruction)?;
         Ok(())
+    }
+
+    /// Counts both timers down by one, stopping at zero. Call it at 60 Hz,
+    /// independently of how many instructions run.
+    ///
+    /// `saturating_sub` stops at 0 instead of panicking (debug) or wrapping
+    /// to 255 (release), and usually compiles without a branch.
+    pub fn tick_timers(&mut self) {
+        self.delay_timer = self.delay_timer.saturating_sub(1);
+        self.sound_timer = self.sound_timer.saturating_sub(1);
     }
 }
 
@@ -2461,5 +2477,20 @@ mod tests {
         step_n(&mut chip8, 6);
 
         assert_eq!(chip8.register[..3], [0x11, 0x22, 0x33]);
+    }
+
+    /// Each tick counts both timers down by one, and they stop at 0 instead of wrapping.
+    #[test]
+    fn tick_timers_counts_down_and_stops_at_zero() {
+        let mut chip8 = Chip8::new();
+        chip8.delay_timer = 2;
+        chip8.sound_timer = 1;
+
+        chip8.tick_timers();
+        assert_eq!((chip8.delay_timer, chip8.sound_timer), (1, 0));
+
+        chip8.tick_timers();
+        chip8.tick_timers();
+        assert_eq!((chip8.delay_timer, chip8.sound_timer), (0, 0));
     }
 }

@@ -10,7 +10,7 @@ pub const HEIGHT: usize = 32;
 const _: () = assert!(WIDTH == u64::BITS as usize);
 
 /// Window refresh rate, in frames per second.
-const FPS: usize = 60;
+pub const FPS: u32 = 60;
 
 /// Color of a lit pixel (`0x00RRGGBB`).
 const ON_COLOR: u32 = 0x00FFFFFF;
@@ -26,7 +26,10 @@ pub struct MfbWindow {
 }
 
 impl MfbWindow {
-    /// Opens a 64×32 window scaled ×16, limited to 60 frames per second.
+    /// Opens a 64×32 window scaled ×16.
+    ///
+    /// minifb's own frame limiter (250 FPS by default) is turned off: the main
+    /// loop paces frames itself, and two limiters would add their sleeps.
     ///
     /// # Errors
     ///
@@ -44,7 +47,7 @@ impl MfbWindow {
                 },
             )?,
         };
-        win.window.set_target_fps(FPS);
+        win.window.set_target_fps(0);
         Ok(win)
     }
 
@@ -68,6 +71,14 @@ impl MfbWindow {
     pub fn draw(&mut self) -> Result<(), minifb::Error> {
         self.window
             .update_with_buffer(self.buffer.as_flattened(), WIDTH, HEIGHT)
+    }
+
+    /// Processes window events (keys, close button) without redrawing.
+    ///
+    /// minifb only polls events inside `update`/`update_with_buffer`, so call
+    /// this on frames where the display did not change, or the window freezes.
+    pub fn update(&mut self) {
+        self.window.update();
     }
 
     pub fn get_key_pressed(&self) -> Option<u8> {
