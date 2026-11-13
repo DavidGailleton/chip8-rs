@@ -121,6 +121,7 @@ impl Error for LoadError {}
 /// Opcode notation: `X` and `Y` are register numbers (one nibble each), `N` is
 /// a 4-bit value, `NN` an 8-bit value, and `NNN` a 12-bit address.
 enum Instruction {
+    DoNothing,
     /// `00E0`: clear the display.
     ClearScreen,
     /// `00EE`: return from a subroutine: pop the return address off the stack into the PC.
@@ -582,6 +583,8 @@ impl Chip8 {
         match (kind, x, y, n) {
             (0x0, 0x0, 0xE, 0x0) => Ok(Instruction::ClearScreen),
             (0x0, 0x0, 0xE, 0xE) => Ok(Instruction::ReturnSubroutine),
+            (0x0, _, _, _) => Ok(Instruction::DoNothing),
+
             (0x1, _, _, _) => Ok(Instruction::Jump(opcode & 0x0FFF)),
             (0x2, _, _, _) => Ok(Instruction::CallSubroutine {
                 nnn: opcode & 0x0FFF,
@@ -643,6 +646,7 @@ impl Chip8 {
     /// to, and [`ExecutionError::IndexToHigh`] for an invalid register number.
     fn execute(&mut self, instruction: Instruction) -> Result<(), ExecutionError> {
         match instruction {
+            Instruction::DoNothing => Ok(()),
             Instruction::ClearScreen => {
                 self.display = [0; HEIGHT];
                 self.display_changed = true;
@@ -737,7 +741,6 @@ impl Chip8 {
             Instruction::FontCharacter { x } => {
                 let vx = usize::from(self.get_register(usize::from(x))?);
                 self.i = FONT_START + vx * 5;
-                eprint!("{:0x}", vx);
                 Ok(())
             }
             Instruction::DecimalConversion { x } => {
