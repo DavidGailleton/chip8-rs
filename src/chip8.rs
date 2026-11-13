@@ -1110,13 +1110,10 @@ mod tests {
     }
 
     #[test]
-    fn decode_near_miss_of_00e0_is_unknown() {
+    fn decode_near_miss_of_00e0_does_nothing() {
         let chip8 = Chip8::new();
 
-        assert!(matches!(
-            chip8.decode(0x00E1),
-            Err(ExecutionError::UnknownOpcode { opcode: 0x00E1 })
-        ));
+        assert!(matches!(chip8.decode(0x00E1), Ok(Instruction::DoNothing)));
     }
 
     #[test]
@@ -1179,17 +1176,14 @@ mod tests {
     }
 
     #[test]
-    fn decode_0nnn_machine_routine_is_unknown() {
+    fn decode_0nnn_machine_routine_does_nothing() {
         let chip8 = Chip8::new();
 
-        assert!(matches!(
-            chip8.decode(0x0123),
-            Err(ExecutionError::UnknownOpcode { opcode: 0x0123 })
-        ));
+        assert!(matches!(chip8.decode(0x0123), Ok(Instruction::DoNothing)));
     }
 
     /// Walks all 65 536 opcodes: only the 35 CHIP-8 instructions decode
-    /// (`00E0`, `00EE`, `1NNN`–`4XNN`, `5XY0`, `6XNN`, `7XNN`, `8XY0`–`8XY7`,
+    /// (`00E0`, `00EE`, the `0NNN` no-op, `1NNN`–`4XNN`, `5XY0`, `6XNN`, `7XNN`, `8XY0`–`8XY7`,
     /// `8XYE`, `9XY0`, `ANNN`–`DXYN`, `EX9E`, `EXA1`, and the `FXNN` group);
     /// every other opcode is rejected and reported as itself.
     #[test]
@@ -1200,8 +1194,7 @@ mod tests {
             let kind = opcode >> 12;
             let n = opcode & 0x000F;
             let lo = opcode & 0x00FF;
-            let supported = matches!(opcode, 0x00E0 | 0x00EE)
-                || matches!(kind, 0x1..=0x4 | 0x6 | 0x7 | 0xA..=0xD)
+            let supported = matches!(kind, 0x0..=0x4 | 0x6 | 0x7 | 0xA..=0xD)
                 || (matches!(kind, 0x5 | 0x9) && n == 0x0)
                 || (kind == 0x8 && matches!(n, 0x0..=0x7 | 0xE))
                 || (kind == 0xE && matches!(lo, 0x9E | 0xA1))
@@ -1916,12 +1909,21 @@ mod tests {
 
     #[test]
     fn step_unknown_opcode_is_an_error() {
-        let mut chip8 = machine_with(&[0x01, 0x23]);
+        let mut chip8 = machine_with(&[0x50, 0x01]);
 
         assert!(matches!(
             chip8.step(),
-            Err(ExecutionError::UnknownOpcode { opcode: 0x0123 })
+            Err(ExecutionError::UnknownOpcode { opcode: 0x5001 })
         ));
+    }
+
+    #[test]
+    fn step_0nnn_only_advances_pc() {
+        let mut chip8 = machine_with(&[0x01, 0x23]);
+
+        chip8.step().unwrap();
+
+        assert_eq!(chip8.program_counter, PROGRAM_START + 2);
     }
 
     // ---------------------------------------------------------------------
