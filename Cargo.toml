@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 minifb = "0.29.0"
+rand = "0.10.3"
 
 # Integer overflow wraps instead of panicking in every profile.
 # Release builds already wrap by default; this makes dev (and test, which inherits it) match.

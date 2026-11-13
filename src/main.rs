@@ -17,6 +17,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     chip8.load_rom(&rom)?;
 
     while window.window.is_open() {
+        chip8.key_pressed = window.get_key_pressed();
         chip8.step()?;
         window.update_buffer(&chip8.display);
         window.draw()?;
